@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: pcm-backend-api
+    runtime: docker
+    plan: free # Dùng gói miễn phí của Render
+    envVars:
+      - key: ASPNETCORE_ENVIRONMENT
+        value: Production
+      - key: ConnectionStrings__DefaultConnection
+        value: "Server=shinkansen.proxy.rlwy.net;Port=38508;Database=railway;User=root;Password=pMnHgBKxUqTtkQyqDSZxFzzJUCXrueut;"
+      - key: JwtSettings__SecretKey
+        value: "YourSuperSecretKeyThere_MustBeVeryLong_123456" # Thay bằng key thật của bạn
+      - key: JwtSettings__Issuer
+        value: "https://pcm-backend-api.onrender.com"
+      - key: JwtSettings__Audience
+        value: "https://pcm-backend-api.onrender.com"

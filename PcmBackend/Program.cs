@@ -123,7 +123,7 @@ using (var scope = app.Services.CreateScope())
     {
         var context = services.GetRequiredService<PcmBackend.Data.ApplicationDbContext>();
         Console.WriteLine("STARTUP: Database Connection Check...");
-        // context.Database.Migrate(); // Disabled: Using existing DB
+        context.Database.Migrate(); // Auto-create tables on Railway
         Console.WriteLine("STARTUP: Database OK!");
         
         Console.WriteLine("STARTUP: Seeding Database...");

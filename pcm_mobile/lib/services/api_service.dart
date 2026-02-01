@@ -3,15 +3,10 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/foundation.dart';
 
 class ApiService {
-  // Tự động chọn Base URL phù hợp với môi trường
+  // Production URL - Render.com
   static String get baseUrl {
-    if (kIsWeb) {
-      // Flutter Web sử dụng localhost backend
-      return 'http://localhost:5000/api';
-    }
-    
-    // Nếu chạy trên Mobile (Android Emulator)
-    return 'http://10.0.2.2:5299/api'; 
+    // Luôn sử dụng URL production trên Render
+    return 'https://pcm-pickleball-project.onrender.com/api';
   }
   
   late Dio _dio;

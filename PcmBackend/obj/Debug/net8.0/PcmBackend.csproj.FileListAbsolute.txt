@@ -506,3 +506,4 @@ D:\MOBILE_FLUTTER_1771020761_NGUYEN-VONG\PcmBackend\bin\Debug\net8.0\PcmBackend.
 D:\MOBILE_FLUTTER_1771020761_NGUYEN-VONG\PcmBackend\bin\Debug\net8.0\PcmBackend.pdb
 D:\MOBILE_FLUTTER_1771020761_NGUYEN-VONG\PcmBackend\obj\Debug\net8.0\PcmBackend.genruntimeconfig.cache
 D:\MOBILE_FLUTTER_1771020761_NGUYEN-VONG\PcmBackend\obj\Debug\net8.0\ref\PcmBackend.dll
+D:\MOBILE_FLUTTER_1771020761_NGUYEN-VONG\PcmBackend\obj\Debug\net8.0\PcmBackend.sourcelink.json

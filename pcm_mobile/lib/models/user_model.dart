@@ -83,7 +83,8 @@ class TransactionModel {
       type: json['type'] ?? '',
       status: json['status'] ?? '',
       description: json['description'],
-      createdDate: DateTime.parse(json['createdDate']),
+      // Fix: Force UTC parsing by appending 'Z' if missing, then convert to Local Time
+      createdDate: DateTime.parse("${json['createdDate']}${json['createdDate'].toString().endsWith('Z') ? '' : 'Z'}").toLocal(),
     );
   }
 }

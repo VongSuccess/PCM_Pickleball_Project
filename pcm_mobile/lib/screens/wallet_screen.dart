@@ -625,7 +625,8 @@ class _WalletScreenState extends State<WalletScreen> {
                  ),
                  const SizedBox(height: 4),
                  Text(
-                   DateFormat('dd/MM HH:mm').format(DateTime.parse(tx.createdDate.toString())), // Parse string date
+                   // Fix Timezone: Updated to use tx.createdDate directly (handled in Model)
+                   DateFormat('dd/MM HH:mm').format(tx.createdDate),
                    style: TextStyle(color: AppColors.darkSportTextSecondary, fontSize: 12),
                  ),
                ],

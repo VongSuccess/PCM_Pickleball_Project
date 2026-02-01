@@ -324,9 +324,9 @@ class _TournamentsScreenState extends State<TournamentsScreen> {
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton(
-                    onPressed: () {
-                       // Navigate to details
-                        Navigator.push(
+                    onPressed: () async {
+                       // Navigate to details and wait for result
+                        await Navigator.push(
                           context,
                           MaterialPageRoute(
                             builder: (context) => TournamentDetailScreen(
@@ -335,6 +335,8 @@ class _TournamentsScreenState extends State<TournamentsScreen> {
                             ),
                           ),
                         );
+                        // Refresh list when returning to checking joined status
+                        _loadTournaments();
                     },
                     style: ElevatedButton.styleFrom(
                       backgroundColor: isJoined ? const Color(0xFF00E676) : Colors.white.withOpacity(0.1),

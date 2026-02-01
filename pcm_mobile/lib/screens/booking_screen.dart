@@ -434,7 +434,18 @@ class _BookingScreenState extends State<BookingScreen> {
   Future<void> _handleBooking() async {
     if (_selectedCourt == null || _selectedStartTime == null) return;
     
+    final auth = Provider.of<AuthProvider>(context, listen: false);
     final bookingProvider = Provider.of<BookingProvider>(context, listen: false);
+
+    // 1. Check Wallet Balance
+    final double totalPrice = _selectedCourt!.pricePerHour;
+    if (auth.user?.walletBalance != null && auth.user!.walletBalance! < totalPrice) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Số dư ví không đủ để đặt sân.'), backgroundColor: Colors.red),
+      );
+      return;
+    }
+
     final startDateTime = DateTime(
       _selectedDay.year, _selectedDay.month, _selectedDay.day,
       _selectedStartTime!.hour, _selectedStartTime!.minute
@@ -458,12 +469,15 @@ class _BookingScreenState extends State<BookingScreen> {
           backgroundColor: result['success'] ? Colors.green : Colors.red,
         ),
       );
+      
       if (result['success']) {
+        // 2. Refresh Wallet Balance
+        await auth.refreshUser(); 
+        
         setState(() {
            _selectedCourt = null;
            _selectedStartTime = null;
         });
-        // In real app, reload slots status
       }
     }
   }

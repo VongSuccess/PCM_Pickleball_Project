@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:intl/intl.dart';
 import '../providers/auth_provider.dart';
 import '../models/tournament_models.dart';
 import '../widgets/tournament_bracket.dart';
+import '../themes/app_colors.dart';
 
 class TournamentDetailScreen extends StatefulWidget {
   final int tournamentId;
@@ -68,20 +70,126 @@ class _TournamentDetailScreenState extends State<TournamentDetailScreen> {
     }
   }
 
+  Future<void> _joinTournament() async {
+    final t = _data?['tournament'];
+    if (t == null) return;
+    
+    final double entryFee = (t['entryFee'] ?? 0).toDouble();
+    final auth = Provider.of<AuthProvider>(context, listen: false);
+    
+    // 1. Check Wallet Balance
+    if (auth.user?.walletBalance != null && (auth.user!.walletBalance! < entryFee)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Số dư ví không đủ để tham gia giải.'), backgroundColor: Colors.red),
+      );
+      return;
+    }
+
+    // 2. Confirm Dialog
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: AppColors.darkSportSurface,
+        title: const Text('Xác nhận tham gia', style: TextStyle(color: Colors.white)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Bạn có chắc muốn tham gia giải "${t['name']}"?', style: const TextStyle(color: Colors.white70)),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                const Text('Phí tham gia: ', style: TextStyle(color: Colors.white70)),
+                Text(NumberFormat.currency(locale: 'vi_VN', symbol: 'đ').format(entryFee), style: TextStyle(color: AppColors.darkSportAccent, fontWeight: FontWeight.bold)),
+              ],
+            ),
+            const SizedBox(height: 8),
+            const Text('(Số tiền sẽ được trích trực tiếp từ ví của bạn)', style: TextStyle(color: Colors.white54, fontSize: 12, fontStyle: FontStyle.italic)),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Hủy', style: TextStyle(color: Colors.white54))),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: AppColors.darkSportAccent, foregroundColor: Colors.black),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Thanh toán & Tham gia'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true) return;
+
+    // 3. Call API
+    setState(() => _isLoading = true);
+    try {
+      // Assuming teamName is required, checking if single player or team tournament. 
+      // For now, simpler flow: Auto-use user name or ask for Team Name if needed.
+      
+      final teamName = auth.user?.fullName ?? 'My Team'; 
+      
+      await auth.apiService.joinTournament(widget.tournamentId, teamName);
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Tham gia thành công!'), backgroundColor: AppColors.success));
+        _loadData(); // Reload to update status
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isLoading = false);
+        String msg = e.toString();
+        // Handle "Already joined" case gracefully
+        if (msg.toLowerCase().contains('bạn đã đăng ký') || msg.toLowerCase().contains('already')) {
+             ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Bạn đã tham gia giải này rồi. Đang cập nhật...'), backgroundColor: Colors.blue));
+             _loadData(); // Reload to fix state
+             return;
+        }
+
+        // Handle specific error messages like "Insufficient balance"
+        if (msg.contains('balance') || msg.contains('số dư')) msg = 'Số dư không đủ.';
+        
+        // Clean up Dio error message if possible
+        if (msg.startsWith('Exception: ')) msg = msg.substring(11);
+        
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg), backgroundColor: Colors.red));
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final auth = Provider.of<AuthProvider>(context);
     final isAdmin = auth.user?.tier == 'Admin' || auth.user?.username == 'admin';
     final tournament = _data?['tournament'];
+    
+    // Check if joined
+    bool isJoined = false;
+    if (_data != null) {
+       // 1. Check explicit flag from backend
+       if (_data!['isJoined'] == true) {
+         isJoined = true;
+       } 
+       // 2. Fallback: Check participants list matches current user
+       else if (_data!['participants'] != null && auth.user?.id != null) {
+          final parts = _data!['participants'] as List;
+          final userId = auth.user!.id; // String id
+          // Check if any participant has the same memberId
+          final found = parts.any((p) => p['memberId'].toString() == userId.toString());
+          if (found) isJoined = true;
+       }
+    }
 
     return Scaffold(
+      backgroundColor: AppColors.darkSportBackground,
       appBar: AppBar(
-        title: Text(widget.tournamentName),
+        title: Text(widget.tournamentName, style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
+        backgroundColor: AppColors.darkSportBackground,
+        iconTheme: const IconThemeData(color: Colors.white),
         actions: [
           if (isAdmin)
-            IconButton(
+             IconButton(
               icon: _isGenerating 
-                  ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white))
+                  ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
                   : const Icon(Icons.shuffle),
               tooltip: 'Tạo lịch thi đấu ngẫu nhiên',
               onPressed: _isGenerating ? null : _generateSchedule,
@@ -89,126 +197,173 @@ class _TournamentDetailScreenState extends State<TournamentDetailScreen> {
         ],
       ),
       body: _isLoading 
-        ? const Center(child: CircularProgressIndicator())
-        : DefaultTabController(
-            length: 2,
-            child: Column(
-              children: [
-                const TabBar(
-                  labelColor: Color(0xFF00BFA5),
-                  unselectedLabelColor: Colors.grey,
-                  tabs: [
-                    Tab(text: 'Thông tin & VĐV'),
-                    Tab(text: 'Cây thi đấu'),
-                  ],
-                ),
-                Expanded(
-                  child: TabBarView(
+        ? const Center(child: CircularProgressIndicator(color: AppColors.darkSportAccent))
+        : Column(
+            children: [
+               // Header Status / Dashboard Link
+               if (isJoined)
+                 Container(
+                   width: double.infinity,
+                   padding: const EdgeInsets.all(12),
+                   color: const Color(0xFF00E676).withOpacity(0.1),
+                   child: Row(
+                     mainAxisAlignment: MainAxisAlignment.center,
+                     children: const [
+                       Icon(Icons.check_circle, color: Color(0xFF00E676)),
+                       SizedBox(width: 8),
+                       Text('BẠN ĐÃ THAM GIA GIẢI ĐẤU NÀY', style: TextStyle(color: Color(0xFF00E676), fontWeight: FontWeight.bold)),
+                     ],
+                   ),
+                 ),
+
+              Expanded(
+                child: DefaultTabController(
+                  length: 2,
+                  child: Column(
                     children: [
-                      _buildInfoTab(tournament, _data?['participants'] ?? []),
-                      _buildBracketTab(),
+                      TabBar(
+                        labelColor: AppColors.darkSportAccent,
+                        unselectedLabelColor: Colors.grey,
+                        indicatorColor: AppColors.darkSportAccent,
+                        tabs: const [
+                          Tab(text: 'Thông tin & VĐV'),
+                          Tab(text: 'Lịch thi đấu'),
+                        ],
+                      ),
+                      Expanded(
+                        child: TabBarView(
+                          children: [
+                            _buildInfoTab(tournament, _data?['participants'] ?? [], isJoined),
+                            _buildBracketTab(),
+                          ],
+                        ),
+                      ),
                     ],
                   ),
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
+      bottomNavigationBar: (!isJoined && tournament != null && (tournament['status'] == 'Open' || tournament['status'] == 'Registering')) 
+        ? Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: AppColors.darkSportSurface,
+              border: const Border(top: BorderSide(color: Colors.white10)),
+            ),
+            child: ElevatedButton(
+              onPressed: _joinTournament,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.darkSportAccent,
+                foregroundColor: Colors.black,
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+              child: const Text('THAM GIA NGAY (Entry Fee)', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+            ),
+          )
+        : null,
     );
   }
 
-  Widget _buildInfoTab(dynamic tournament, List<dynamic> participants) {
+  Widget _buildInfoTab(dynamic tournament, List<dynamic> participants, bool isJoined) {
+    if (tournament == null) return const SizedBox();
+    
+    final status = tournament['status'] ?? 'Unknown';
+    final entryFee = (tournament['entryFee'] ?? 0).toDouble();
+    final prizePool = (tournament['prizePool'] ?? 0).toDouble();
+
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          if (tournament != null) ...[
-             Card(
-               child: ListTile(
-                 title: const Text('Trạng thái giải'),
-                 trailing: Container(
-                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                   decoration: BoxDecoration(
-                     color: Colors.blue,
-                     borderRadius: BorderRadius.circular(12),
-                   ),
-                   child: Text(tournament['status'] ?? '', style: const TextStyle(color: Colors.white)),
-                 ),
-               ),
+           // Status Card
+           Container(
+             padding: const EdgeInsets.all(16),
+             decoration: BoxDecoration(
+               color: AppColors.darkSportSurface,
+               borderRadius: BorderRadius.circular(16),
+               border: Border.all(color: Colors.white10),
              ),
-             const SizedBox(height: 16),
-          ],
-          Text('Danh sách VĐV (${participants.length})', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 8),
-          ...participants.map((p) => Card(
-            child: ListTile(
-              leading: CircleAvatar(child: Text(p['memberName'][0])),
-              title: Text(p['memberName']),
-              subtitle: Text(p['teamName'] != null && p['teamName'].isNotEmpty ? 'Team: ${p['teamName']}' : 'Cá nhân'),
-              trailing: const Icon(Icons.more_vert),
-              onTap: () {
-                showModalBottomSheet(
-                  context: context,
-                  builder: (context) => Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      ListTile(
-                        leading: const Icon(Icons.person, color: Colors.blue),
-                        title: const Text('Xem hồ sơ'),
-                        onTap: () {
-                          Navigator.pop(context);
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('Tính năng đang phát triển')),
-                          );
-                        },
-                      ),
-                      ListTile(
-                        leading: const Icon(Icons.sports_kabaddi, color: Colors.red),
-                        title: const Text('Gửi lời thách đấu'),
-                        onTap: () async {
-                          Navigator.pop(context);
-                          final auth = Provider.of<AuthProvider>(context, listen: false);
-                          
-                          // Quick confirm
-                          final confirm = await showDialog<bool>(
-                            context: context,
-                            builder: (context) => AlertDialog(
-                              title: const Text('Thách đấu'),
-                              content: Text('Bạn có muốn thách đấu với ${p['memberName']} không?'),
-                              actions: [
-                                TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Hủy')),
-                                TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('Đồng ý')),
-                              ],
-                            ),
-                          );
+             child: Column(
+               children: [
+                 Row(
+                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                   children: [
+                     const Text('Trạng thái', style: TextStyle(color: Colors.white70)),
+                     Container(
+                       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                       decoration: BoxDecoration(
+                         color: _getStatusColor(status).withOpacity(0.2),
+                         borderRadius: BorderRadius.circular(8),
+                         border: Border.all(color: _getStatusColor(status).withOpacity(0.5)),
+                       ),
+                       child: Text(status.toUpperCase(), style: TextStyle(color: _getStatusColor(status), fontWeight: FontWeight.bold, fontSize: 12)),
+                     )
+                   ],
+                 ),
+                 const Divider(height: 24, color: Colors.white12),
+                 Row(
+                   children: [
+                     Expanded(child: _buildStatItem('Phí tham gia', NumberFormat.currency(locale: 'vi_VN', symbol: 'đ').format(entryFee), Colors.orange)),
+                     Expanded(child: _buildStatItem('Tổng thưởng', NumberFormat.currency(locale: 'vi_VN', symbol: 'đ').format(prizePool), AppColors.darkSportAccent)),
+                   ],
+                 )
+               ],
+             ),
+           ),
+           
+           const SizedBox(height: 24),
+           Row(
+             mainAxisAlignment: MainAxisAlignment.spaceBetween,
+             children: [
+               Text('Danh sách VĐV (${participants.length})', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white)),
+               if (isJoined)
+                 Text('(Bạn đã có mặt)', style: TextStyle(color: AppColors.darkSportAccent, fontSize: 12, fontStyle: FontStyle.italic)),
+             ],
+           ),
+           const SizedBox(height: 12),
+           
+           if (participants.isEmpty)
+             const Center(child: Padding(padding: EdgeInsets.all(32), child: Text('Chưa có vận động viên nào', style: TextStyle(color: Colors.white30)))),
 
-                          if (confirm == true) {
-                            try {
-                              final res = await auth.apiService.createDuel(p['memberId']);
-                              if (context.mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(content: Text(res.data['message']), backgroundColor: Colors.green),
-                                );
-                              }
-                            } catch (e) {
-                              if (context.mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(content: Text('Lỗi: $e'), backgroundColor: Colors.red),
-                                );
-                              }
-                            }
-                          }
-                        },
-                      ),
-                    ],
-                  ),
-                );
-              },
-            ),
-          )),
+           ...participants.map((p) => Container(
+             margin: const EdgeInsets.only(bottom: 8),
+             decoration: BoxDecoration(
+               color: AppColors.darkSportSurface,
+               borderRadius: BorderRadius.circular(12),
+             ),
+             child: ListTile(
+               leading: CircleAvatar(
+                 backgroundColor: Colors.blueGrey.withOpacity(0.3),
+                 child: Text((p['memberName'] ?? '?')[0].toUpperCase(), style: const TextStyle(color: Colors.white)),
+               ),
+               title: Text(p['memberName'] ?? 'Unknown', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+               subtitle: Text(p['teamName'] != null && p['teamName'].isNotEmpty ? 'Team: ${p['teamName']}' : 'Cá nhân', style: const TextStyle(color: Colors.white54)),
+             ),
+           )),
         ],
       ),
     );
+  }
+
+  Widget _buildStatItem(String label, String value, Color color) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label, style: const TextStyle(color: Colors.white54, fontSize: 12)),
+        const SizedBox(height: 4),
+        Text(value, style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 16)),
+      ],
+    );
+  }
+  
+  Color _getStatusColor(String status) {
+     if (status == 'Open' || status == 'Registering') return Colors.green;
+     if (status == 'Ongoing' || status == 'InProgress') return Colors.amber;
+     if (status == 'Finished') return Colors.red;
+     return Colors.blue;
   }
 
   Widget _buildBracketTab() {
